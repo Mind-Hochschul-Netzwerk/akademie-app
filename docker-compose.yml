@@ -1,0 +1,71 @@
+version: "3.5"
+services:
+  akademie-app-database:
+    image: mariadb:10.11
+    restart: unless-stopped
+    container_name: ${SERVICENAME}-database
+    environment:
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD
+      - MYSQL_DATABASE=database
+      - MYSQL_ROOT_PASSWORD
+      - MARIADB_AUTO_UPGRADE=1
+    volumes:
+      - "${VOLUMES_DIR}/mariadb:/var/lib/mysql"
+    networks:
+      - ${SERVICENAME}
+
+  akademie-app-cache:
+    image: redis:6
+    container_name: ${SERVICENAME}-cache
+    networks:
+      - ${SERVICENAME}
+
+  akademie-app-directus:
+    image: directus/directus:10.6.3
+    container_name: ${SERVICENAME}-directus
+    depends_on:
+      - ${SERVICENAME}-cache
+      - ${SERVICENAME}-database
+    environment:
+      KEY: ${DIRECTUS_KEY}
+      SECRET: ${DIRECTUS_SECRET}
+      DB_CLIENT: 'mysql'
+      DB_HOST: '${SERVICENAME}-database'
+      DB_PORT: '3306'
+      DB_DATABASE: 'database'
+      DB_USER: 'user'
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      CACHE_ENABLED: 'true'
+      CACHE_STORE: 'redis'
+      REDIS: 'redis://${SERVICENAME}-cache:6379'
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      PUBLIC_URL: 'https://${SERVICENAME}-directus.${DOMAINNAME}'
+      CORS_ENABLED: 'true'
+      CORS_ORIGIN: 'true'
+    networks:
+      - ${SERVICENAME}
+
+  akademie-app:
+    image: mindhochschulnetzwerk/${SERVICENAME}
+    restart: unless-stopped
+    container_name: ${SERVICENAME}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.${SERVICENAME}.entrypoints=websecure
+      - traefik.http.routers.${SERVICENAME}.rule=Host(`${SERVICENAME}.${DOMAINNAME}`) || Host(`${SERVICENAME}-directus.${DOMAINNAME}`)
+    depends_on:
+      - ${SERVICENAME}-database
+      - ${SERVICENAME}-directus
+    networks:
+      - traefik
+      - ${SERVICENAME}
+
+networks:
+  traefik:
+    name: traefik
+    external: true
+  akademie-app:
+    name: ${SERVICENAME}
